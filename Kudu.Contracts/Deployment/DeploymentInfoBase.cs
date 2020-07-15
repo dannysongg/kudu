@@ -14,6 +14,7 @@ namespace Kudu.Core.Deployment
             IsReusable = true;
             AllowDeferredDeployment = true;
             DoFullBuildByDefault = true;
+            WatchedFileEnabled = true;
         }
 
         public RepositoryType RepositoryType { get; set; }
@@ -31,7 +32,12 @@ namespace Kudu.Core.Deployment
         // Optional.
         // Path of the directory to be deployed to. The path should be relative to the wwwroot directory.
         // Example: "webapps/ROOT"
+        // If a path is provided, this should be set to path passed through OneDeploy sans the file name.
         public string TargetPath { get; set; }
+
+        // Hardcode this value when filename is known i.e. app.jar or app.war
+        // When the filename is unknown parse the file name from the path query parameter.
+        public string FileName { get; set; }
 
         // Optional.
         // Path of the file that is watched for changes by the web server.
@@ -68,5 +74,7 @@ namespace Kudu.Core.Deployment
         // won't update until after a process restart. Therefore, we copy the needed
         // files into a separate folders and run sync triggers from there.
         public string SyncFunctionsTriggersPath { get; set; } = null;
+
+        public bool WatchedFileEnabled { get; set;}
     }
 }

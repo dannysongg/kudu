@@ -64,7 +64,7 @@ namespace Kudu.Services.Deployment
         {
             using (_tracer.Step("ZipPushDeploy"))
             {
-                var deploymentInfo = new ZipDeploymentInfo(_environment, _traceFactory)
+                var deploymentInfo = new ArtifactDeploymentInfo(_environment, _traceFactory)
                 {
                     AllowDeploymentWhileScmDisabled = true,
                     Deployer = deployer,
@@ -114,7 +114,7 @@ namespace Kudu.Services.Deployment
                     appName = "ROOT";
                 }
 
-                var deploymentInfo = new ZipDeploymentInfo(_environment, _traceFactory)
+                var deploymentInfo = new ArtifactDeploymentInfo(_environment, _traceFactory)
                 {
                     AllowDeploymentWhileScmDisabled = true,
                     Deployer = deployer,
@@ -138,9 +138,173 @@ namespace Kudu.Services.Deployment
             }
         }
 
-        private string GetZipURLFromARMJSON(JObject requestObject)
+        [HttpPost]
+        [HttpPut]
+        public async Task<HttpResponseMessage> OnePushDeploy(
+            [FromUri] string type = null,
+            [FromUri] bool async = false,
+            [FromUri] string path = null,
+            [FromUri] bool clean = false,
+            [FromUri] string message = DefaultMessage)
         {
-            using (_tracer.Step("Reading the zip URL from the request JSON"))
+            using (_tracer.Step("OnePushDeploy"))
+            {
+                var response = Request.CreateResponse();
+
+                var website_framework = System.Environment.GetEnvironmentVariable(Constants.Framework).ToLower();
+
+                var deploymentInfo = new ArtifactDeploymentInfo(_environment, _traceFactory)
+                {
+                    AllowDeploymentWhileScmDisabled = true,
+                    Deployer = Constants.OneDeploy,
+                    IsContinuous = false,
+                    AllowDeferredDeployment = false,
+                    IsReusable = false,
+                    CleanupTargetDirectory = clean,
+                    TargetChangeset = DeploymentManager.CreateTemporaryChangeSet(message: "Deploying from pushed file"),
+                    CommitId = null,
+                    RepositoryType = RepositoryType.None,
+                    Fetch = ArtifactFetch,
+                    DoFullBuildByDefault = false,
+                    Message = message,
+                    WatchedFileEnabled = false 
+                };
+
+                switch (type)
+                {
+                    case Constants.War:
+                        if(website_framework!=Constants.Tomcat)
+                        {
+                           
+                            response.StatusCode = HttpStatusCode.BadRequest;
+                            response.Content = new StringContent("WAR files cannot be deployed to " + website_framework + " web apps.");
+                            
+                            return response;
+                        }
+
+                        //When the file name is constant, such as app.war or app.jar, deploymentInfo.FileName can be hardcoded
+                        //If the target directory for the file is wwwroot, deploymentInfo.TargetPath does not need to be set 
+                        deploymentInfo.FileName = "app.war";
+
+                        break;
+
+                    case Constants.Jar:
+                        if (website_framework != Constants.JavaSE)
+                        {
+
+                            response.StatusCode = HttpStatusCode.BadRequest;
+                            response.Content = new StringContent("JAR files cannot be deployed to " + website_framework + " web apps.");
+                            
+                            return response;
+                        }
+                        deploymentInfo.FileName = "app.jar";
+
+                        break;
+
+                    case Constants.Lib:
+                        if (string.IsNullOrWhiteSpace(path))
+                        {
+                            response.StatusCode = HttpStatusCode.BadRequest;
+                            response.Content = new StringContent("Path must be defined for library file deployments");
+                            
+                            return response;
+                        }
+                        else
+                        {
+
+                            //When the file name is unknown, then deploymentInfo.FileName must be derrived from the path query string
+                            deploymentInfo.FileName = Path.GetFileName(path);
+
+                            //If a path is provided, then deploymentInfo.TargetPath must also be derrived from the path query string
+                            deploymentInfo.TargetPath = Path.GetDirectoryName(path);
+                        }
+
+                        break;
+
+                    case Constants.Startup:
+
+                        //assumes windows application for Kudu deploymnets
+                        //deploymentInfo.TargetPath is set here because the files are not getting deployed to wwwwroot
+                        deploymentInfo.TargetPath = _environment.RootPath;
+                        deploymentInfo.FileName = "startup.bat";
+
+                        break;
+
+                    case Constants.Ear:
+
+                        //currently not supported on Windows but here for future use
+                        if (website_framework != Constants.JavaEE)
+                        {
+
+                            response.StatusCode = HttpStatusCode.BadRequest;
+                            response.Content = new StringContent("EAR files cannot be deployed to " + website_framework + " web apps.");
+                            
+                            return response;
+                        }
+                        deploymentInfo.FileName = "app.ear";
+
+                        break;
+
+                    case Constants.Static:
+                        if (string.IsNullOrWhiteSpace(path))
+                        {
+                            response.StatusCode = HttpStatusCode.BadRequest;
+                            response.Content = new StringContent("Path must be defined for static file deployments");
+                            
+                            return response;
+                        }
+                        else
+                        {
+                            deploymentInfo.FileName = Path.GetFileName(path);
+                            
+                            deploymentInfo.TargetPath = Path.GetDirectoryName(path);
+                        }
+
+                        break;
+
+                    case Constants.Zip:
+                        deploymentInfo.Fetch = LocalZipHandler;
+                        if (_settings.RunFromLocalZip())
+                        {
+
+                            // This is used if the deployment is Run-From-Zip
+                            // the name of the deployed file in D:\home\data\SitePackages\{name}.zip is the 
+                            // timestamp in the format yyyMMddHHmmss. 
+                            deploymentInfo.ZipName = $"{DateTime.UtcNow.ToString("yyyyMMddHHmmss")}.zip";
+
+                            // This is also for Run-From-Zip where we need to extract the triggers
+                            // for post deployment sync triggers.
+                            deploymentInfo.SyncFunctionsTriggersPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+                        }
+
+                        break;
+
+                    default:
+                        if (string.IsNullOrWhiteSpace(type))
+                        {
+                            //return error: type not provided
+                            response.StatusCode = HttpStatusCode.BadRequest;
+                            response.Content = new StringContent("Deployment type not provided");
+                            
+                            return response;
+                        }
+                        else
+                        {
+                            //return error: type not valid
+                            response.StatusCode = HttpStatusCode.BadRequest;
+                            response.Content = new StringContent("Deployment type not valid");
+                            
+                            return response;
+                        }
+                }
+
+                return await PushDeployAsync(deploymentInfo, async);
+            }
+        }
+
+        private string GetArticfactURLFromARMJSON(JObject requestObject)
+        {
+            using (_tracer.Step("Reading the artifact URL from the request JSON"))
             {
                 try
                 {
@@ -150,19 +314,21 @@ namespace Kudu.Services.Deployment
                     {
                         throw new ArgumentException("Invalid Url in the JSON request");
                     }
+
                     return packageUri;
                 }
                 catch (Exception ex)
                 {
                     _tracer.TraceError(ex, "Error reading the URL from the JSON {0}", requestObject.ToString());
+
                     throw;
                 }
             }
         }
 
-        private string GetZipURLFromJSON(JObject requestObject)
+        private string GetArtifactURLFromJSON(JObject requestObject)
         {
-            using (_tracer.Step("Reading the zip URL from the request JSON"))
+            using (_tracer.Step("Reading the artifact URL from the request JSON"))
             {
                 try
                 {
@@ -171,33 +337,37 @@ namespace Kudu.Services.Deployment
                     {
                         throw new ArgumentException("Invalid Url in the JSON request");
                     }
+
                     return packageUri;
                 }
                 catch (Exception ex)
                 {
                     _tracer.TraceError(ex, "Error reading the URL from the JSON {0}", requestObject.ToString());
+
                     throw;
                 }
             }
         }
 
-        private async Task<HttpResponseMessage> PushDeployAsync(ZipDeploymentInfo deploymentInfo, bool isAsync)
+        private async Task<HttpResponseMessage> PushDeployAsync(ArtifactDeploymentInfo deploymentInfo, bool isAsync)
         {
             var content = Request.Content;
+            var deployer = deploymentInfo.Deployer;
+            var deploymentType = Request.RequestUri.ParseQueryString()["type"];
             var isRequestJSON = content.Headers?.ContentType?.MediaType?.Equals("application/json", StringComparison.OrdinalIgnoreCase);
             if (isRequestJSON == true)
             {
                 try
                 {
                     var requestObject = await Request.Content.ReadAsAsync<JObject>();
-                    deploymentInfo.ZipURL = ArmUtils.IsArmRequest(Request) ? GetZipURLFromARMJSON(requestObject) : GetZipURLFromJSON(requestObject);
+                    deploymentInfo.ArtifactURL = ArmUtils.IsArmRequest(Request) ? GetArticfactURLFromARMJSON(requestObject) : GetArtifactURLFromJSON(requestObject);
                 }
                 catch (Exception ex)
                 {
                     return ArmUtils.CreateErrorResponse(Request, HttpStatusCode.BadRequest, ex);
                 }
             }
-            else
+            else if (deployer != Constants.OneDeploy || deploymentType == Constants.Zip) // only runs this code if using Zip/War Deploy or OneDeploy Zip 
             {
                 if (_settings.RunFromLocalZip())
                 {
@@ -303,13 +473,13 @@ namespace Kudu.Services.Deployment
 
         private async Task LocalZipHandler(IRepository repository, DeploymentInfoBase deploymentInfo, string targetBranch, ILogger logger, ITracer tracer)
         {
-            if (_settings.RunFromLocalZip() && deploymentInfo is ZipDeploymentInfo)
+            if (_settings.RunFromLocalZip() && deploymentInfo is ArtifactDeploymentInfo)
             {
-                ZipDeploymentInfo zipDeploymentInfo = (ZipDeploymentInfo) deploymentInfo;
+                ArtifactDeploymentInfo zipDeploymentInfo = (ArtifactDeploymentInfo)deploymentInfo;
                 // If this was a request with a Zip URL in the JSON, we first need to get the zip content and write it to the site.
-                if (!string.IsNullOrEmpty(zipDeploymentInfo.ZipURL))
+                if (!string.IsNullOrEmpty(zipDeploymentInfo.ArtifactURL))
                 {
-                    await WriteSitePackageZip(zipDeploymentInfo, tracer, await DeploymentHelper.GetZipContentFromURL(zipDeploymentInfo, tracer));
+                    await WriteSitePackageZip(zipDeploymentInfo, tracer, await DeploymentHelper.GetArtifactContentFromURL(zipDeploymentInfo, tracer));
                 }
                 // If this is a Run-From-Zip deployment, then we need to extract function.json
                 // from the zip file into path zipDeploymentInfo.SyncFunctionsTriggersPath
@@ -321,7 +491,7 @@ namespace Kudu.Services.Deployment
             }
         }
 
-        private void ExtractTriggers(IRepository repository, ZipDeploymentInfo zipDeploymentInfo)
+        private void ExtractTriggers(IRepository repository, ArtifactDeploymentInfo zipDeploymentInfo)
         {
             FileSystemHelpers.EnsureDirectory(zipDeploymentInfo.SyncFunctionsTriggersPath);
             // Loading the zip file depends on how fast the file system is.
@@ -354,13 +524,53 @@ namespace Kudu.Services.Deployment
             }
         }
 
-        private async Task<string> DeployZipLocally(ZipDeploymentInfo zipDeploymentInfo, ITracer tracer)
+        private async Task ArtifactFetch(IRepository repository, DeploymentInfoBase deploymentInfo, string targetBranch, ILogger logger, ITracer tracer)
         {
-            var content = await DeploymentHelper.GetZipContentFromURL(zipDeploymentInfo, tracer);
+            var artifactDeploymentInfo = (ArtifactDeploymentInfo)deploymentInfo;
+            //Fetches content from URL if ArtifactURL exists
+            HttpContent content = !string.IsNullOrEmpty(artifactDeploymentInfo.ArtifactURL)
+                ? await DeploymentHelper.GetArtifactContentFromURL(artifactDeploymentInfo, tracer)
+                : Request.Content;
+
+            //repository.RepositoryPath is the directory the deployment pipeline expects the files that will be deployed to be
+            var tempDirPath = repository.RepositoryPath;
+            if (deploymentInfo.CleanupTargetDirectory)
+            {
+                var targetInfo = FileSystemHelpers.DirectoryInfoFromDirectoryName(tempDirPath);
+                if (targetInfo.Exists)
+                {
+                    // If tempDirPath already exists, rename it so we can delete it concurrently with
+                    // the unzip (along with any other junk in the folder)
+                    var moveTarget = Path.Combine(targetInfo.Parent.FullName, Path.GetRandomFileName());
+                    using (tracer.Step(string.Format("Renaming extractTargetDirectory({0}) to tempDirectory({1})", targetInfo.FullName, moveTarget)))
+                    {
+                        targetInfo.MoveTo(moveTarget);
+                    }
+                }
+
+            }
+
+            var tempFilePath = Path.Combine(tempDirPath, deploymentInfo.FileName);
+            Directory.CreateDirectory(tempDirPath);
+            using (tracer.Step("Saving request content to {0}", tempFilePath))
+            {
+                await content.CopyToAsync(tempFilePath, tracer);
+                //Deletes all files and directories except for tempFilePath, tempDirPath, and tracer
+                var cleanTask = Task.Run(() => DeleteFilesAndDirsExcept(tempFilePath, tempDirPath, tracer));
+                await Task.WhenAll(cleanTask);
+            }
+
+            //The deployment flow expects at least 1 commit in the IRepository commit, refer to CommitRepo() for more info
+            CommitRepo(repository, artifactDeploymentInfo);
+        }
+
+        private async Task<string> DeployZipLocally(ArtifactDeploymentInfo zipDeploymentInfo, ITracer tracer)
+        {
+            var content = await DeploymentHelper.GetArtifactContentFromURL(zipDeploymentInfo, tracer);
             var zipFileName = Path.ChangeExtension(Path.GetRandomFileName(), "zip");
             var zipFilePath = Path.Combine(_environment.ZipTempPath, zipFileName);
 
-            using (_tracer.Step("Downloading content from {0} to {1}", zipDeploymentInfo.ZipURL.Split('?')[0], zipFilePath))
+            using (_tracer.Step("Downloading content from {0} to {1}", zipDeploymentInfo.ArtifactURL.Split('?')[0], zipFilePath))
             {
                 await content.CopyToAsync(zipFilePath, _tracer);
             }
@@ -371,11 +581,11 @@ namespace Kudu.Services.Deployment
 
         private async Task LocalZipFetch(IRepository repository, DeploymentInfoBase deploymentInfo, string targetBranch, ILogger logger, ITracer tracer)
         {
-            var zipDeploymentInfo = (ZipDeploymentInfo) deploymentInfo;
+            var zipDeploymentInfo = (ArtifactDeploymentInfo)deploymentInfo;
 
             // If this was a request with a Zip URL in the JSON, we need to deploy the zip locally and get the path
             // Otherwise, for this kind of deployment, RepositoryUrl is a local path.
-            var sourceZipFile = !string.IsNullOrEmpty(zipDeploymentInfo.ZipURL)
+            var sourceZipFile = !string.IsNullOrEmpty(zipDeploymentInfo.ArtifactURL)
                 ? await DeployZipLocally(zipDeploymentInfo, tracer)
                 : zipDeploymentInfo.RepositoryUrl;
 
@@ -421,11 +631,10 @@ namespace Kudu.Services.Deployment
 
                 await Task.WhenAll(cleanTask, extractTask);
             }
-
             CommitRepo(repository, zipDeploymentInfo);
         }
 
-        private static void CommitRepo(IRepository repository, ZipDeploymentInfo zipDeploymentInfo)
+        private static void CommitRepo(IRepository repository, ArtifactDeploymentInfo zipDeploymentInfo)
         {
             // Needed in order for repository.GetChangeSet() to work.
             // Similar to what OneDriveHelper and DropBoxHelper do.
@@ -435,7 +644,7 @@ namespace Kudu.Services.Deployment
             repository.Commit(zipDeploymentInfo.Message, zipDeploymentInfo.Author, zipDeploymentInfo.AuthorEmail);
         }
 
-        private async Task WriteSitePackageZip(ZipDeploymentInfo zipDeploymentInfo, ITracer tracer, HttpContent content)
+        private async Task WriteSitePackageZip(ArtifactDeploymentInfo zipDeploymentInfo, ITracer tracer, HttpContent content)
         {
             var filePath = Path.Combine(_environment.SitePackagesPath, zipDeploymentInfo.ZipName);
 
