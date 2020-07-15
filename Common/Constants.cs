@@ -136,5 +136,23 @@ namespace Kudu
         public const string PackageNameTxt = "packagename.txt";
         public const string AppOfflineFileName = "app_offline.htm";
         public const string AppOfflineKuduContent = "Created by kudu";
+
+        public const string OneDeploy = "OneDeploy";
+
+        //OneDeploy Deploy Types
+        public const string War = "war";
+        public const string Jar = "jar";
+        public const string Lib = "lib";
+        public const string Startup = "startup";
+        public const string Ear = "ear";
+        public const string Static = "static";
+        public const string Zip = "zip";
+
+        //OneDeploy Webapp Frameworks 
+        public const string Framework = "WEBSITE_FRAMEWORK";
+        public const string Tomcat = "tomcat";
+        public const string JavaSE = "javase";
+        public const string JavaEE = "javaee";
+
     }
 }

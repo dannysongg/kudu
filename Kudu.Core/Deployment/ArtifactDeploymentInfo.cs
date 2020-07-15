@@ -5,12 +5,12 @@ using Kudu.Core.Tracing;
 
 namespace Kudu.Core.Deployment
 {
-    public class ZipDeploymentInfo : DeploymentInfoBase
+    public class ArtifactDeploymentInfo : DeploymentInfoBase
     {
-        private readonly IEnvironment _environment;
         private readonly ITraceFactory _traceFactory;
+        private readonly IEnvironment _environment;
 
-        public ZipDeploymentInfo(IEnvironment environment, ITraceFactory traceFactory)
+        public ArtifactDeploymentInfo(IEnvironment environment, ITraceFactory traceFactory)
         {
             _environment = environment;
             _traceFactory = traceFactory;
@@ -33,7 +33,7 @@ namespace Kudu.Core.Deployment
         // This is used if the deployment is Run-From-Zip
         public string ZipName { get; set; }
 
-        // This is used when getting the zipfile from the zipURL
-        public string ZipURL { get; set; }
+        // This is used when getting the artifact file from the artifactURL
+        public string ArtifactURL { get; set; }
     }
 }

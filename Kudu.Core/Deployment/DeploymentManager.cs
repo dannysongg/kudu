@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Security;
 using System.Text;
 using System.Threading.Tasks;
 using Kudu.Contracts.Infrastructure;
@@ -275,7 +277,7 @@ namespace Kudu.Core.Deployment
 
                 if (statusFile != null && statusFile.Status == DeployStatus.Success && _settings.RunFromLocalZip())
                 {
-                    var zipDeploymentInfo = deploymentInfo as ZipDeploymentInfo;
+                    var zipDeploymentInfo = deploymentInfo as ArtifactDeploymentInfo;
                     if (zipDeploymentInfo != null)
                     {
                         await PostDeploymentHelper.UpdateSiteVersion(zipDeploymentInfo, _environment, tracer);
@@ -291,12 +293,10 @@ namespace Kudu.Core.Deployment
             {
                 return;
             }
-
             if (_settings.RecylePreviewEnabled())
             {
                 logger.Log("Triggering recycle (preview mode enabled).");
                 tracer.Trace("Triggering recycle (preview mode enabled).");
-
                 await PostDeploymentHelper.RestartMainSiteAsync(_environment.RequestId, new PostDeploymentTraceListener(tracer, logger));
             }
             else
@@ -693,12 +693,18 @@ namespace Kudu.Core.Deployment
                     {
                         await builder.Build(context);
                         builder.PostBuild(context);
-
-                        await RestartMainSiteIfNeeded(tracer, logger);
-
+                        if(deploymentInfo.Deployer == Constants.OneDeploy)
+                        {
+                            await PostDeploymentHelper.RestartMainSiteAsync(_environment.RequestId, new PostDeploymentTraceListener(tracer, logger));
+                        }
+                        else
+                        {
+                            await RestartMainSiteIfNeeded(tracer, logger);
+                        }
+            
                         await PostDeploymentHelper.SyncFunctionsTriggers(_environment.RequestId, new PostDeploymentTraceListener(tracer, logger), deploymentInfo?.SyncFunctionsTriggersPath);
 
-                        if (!_settings.RunFromZip() && _settings.TouchWatchedFileAfterDeployment())
+                        if (!_settings.RunFromZip() && _settings.TouchWatchedFileAfterDeployment() && deploymentInfo.WatchedFileEnabled)
                         {
                             TryTouchWatchedFile(context, deploymentInfo);
                         }
