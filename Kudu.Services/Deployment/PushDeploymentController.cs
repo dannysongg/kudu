@@ -94,7 +94,7 @@ namespace Kudu.Services.Deployment
                     deploymentInfo.SyncFunctionsTriggersPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
                 }
 
-                return await PushDeployAsync(deploymentInfo, Constants.Zip, isAsync);
+                return await PushDeployAsync(deploymentInfo, isAsync);
             }
         }
 
@@ -135,7 +135,7 @@ namespace Kudu.Services.Deployment
                     Message = message
                 };
 
-                return await PushDeployAsync(deploymentInfo, Constants.Zip, isAsync);
+                return await PushDeployAsync(deploymentInfo, isAsync);
             }
         }
 
@@ -151,6 +151,8 @@ namespace Kudu.Services.Deployment
             using (_tracer.Step("OnePushDeploy"))
             {
                 JObject requestObject = null;
+
+                var deploymentType = type;
 
                 var response = Request.CreateResponse();
 
@@ -190,7 +192,7 @@ namespace Kudu.Services.Deployment
                     WatchedFileEnabled = false
                 };
 
-                switch (type)
+                switch (deploymentType)
                 {
                     case Constants.War:
                         if(website_framework!=Constants.Tomcat)
@@ -318,7 +320,7 @@ namespace Kudu.Services.Deployment
                         }
                 }
 
-                return await PushDeployAsync(deploymentInfo, type, async, requestObject);
+                return await PushDeployAsync(deploymentInfo, async, requestObject, deploymentType);
             }
         }
 
@@ -370,7 +372,7 @@ namespace Kudu.Services.Deployment
             }
         }
 
-        private async Task<HttpResponseMessage> PushDeployAsync(ArtifactDeploymentInfo deploymentInfo, string deploymentType, bool isAsync, JObject requestObject = null)
+        private async Task<HttpResponseMessage> PushDeployAsync(ArtifactDeploymentInfo deploymentInfo, bool isAsync, JObject requestObject = null, string artifactType = Constants.Zip)
         {
             var content = Request.Content;
             var deployer = deploymentInfo.Deployer;
@@ -392,7 +394,8 @@ namespace Kudu.Services.Deployment
                 }
             }
             //Copies zipped files to temp path to be unzipped later
-            else if (deploymentType == Constants.Zip) 
+            //artifactType is Constants.Zip by default but can be set by OnePushDeploy() if deploy a different artifact type
+            else if (artifactType == Constants.Zip) 
             {
                 if (_settings.RunFromLocalZip())
                 {
