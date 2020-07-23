@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -93,7 +94,7 @@ namespace Kudu.Services.Deployment
                     deploymentInfo.SyncFunctionsTriggersPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
                 }
 
-                return await PushDeployAsync(deploymentInfo, isAsync);
+                return await PushDeployAsync(deploymentInfo, Constants.Zip, isAsync);
             }
         }
 
@@ -134,7 +135,7 @@ namespace Kudu.Services.Deployment
                     Message = message
                 };
 
-                return await PushDeployAsync(deploymentInfo, isAsync);
+                return await PushDeployAsync(deploymentInfo, Constants.Zip, isAsync);
             }
         }
 
@@ -149,9 +150,28 @@ namespace Kudu.Services.Deployment
         {
             using (_tracer.Step("OnePushDeploy"))
             {
+                JObject requestObject = null;
+
                 var response = Request.CreateResponse();
 
                 var website_framework = System.Environment.GetEnvironmentVariable(Constants.Framework).ToLower();
+
+                try
+                {
+                    if (ArmUtils.IsArmRequest(Request))
+                    {
+                        requestObject = await Request.Content.ReadAsAsync<JObject>();
+                        var armProperties = requestObject.Value<JObject>("properties");
+                        type = armProperties.Value<string>("type");
+                        async = armProperties.Value<bool>("async");
+                        path = armProperties.Value<string>("path");
+                        clean = armProperties.Value<bool>("clean");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return ArmUtils.CreateErrorResponse(Request, HttpStatusCode.BadRequest, ex);
+                }
 
                 var deploymentInfo = new ArtifactDeploymentInfo(_environment, _traceFactory)
                 {
@@ -167,7 +187,7 @@ namespace Kudu.Services.Deployment
                     Fetch = ArtifactFetch,
                     DoFullBuildByDefault = false,
                     Message = message,
-                    WatchedFileEnabled = false 
+                    WatchedFileEnabled = false
                 };
 
                 switch (type)
@@ -284,7 +304,7 @@ namespace Kudu.Services.Deployment
                         {
                             //return error: type not provided
                             response.StatusCode = HttpStatusCode.BadRequest;
-                            response.Content = new StringContent("Deployment type not provided");
+                            //response.Content = new StringContent("Deployment type not provided");
                             
                             return response;
                         }
@@ -298,7 +318,7 @@ namespace Kudu.Services.Deployment
                         }
                 }
 
-                return await PushDeployAsync(deploymentInfo, async);
+                return await PushDeployAsync(deploymentInfo, type, async, requestObject);
             }
         }
 
@@ -316,6 +336,7 @@ namespace Kudu.Services.Deployment
                     }
 
                     return packageUri;
+
                 }
                 catch (Exception ex)
                 {
@@ -349,17 +370,20 @@ namespace Kudu.Services.Deployment
             }
         }
 
-        private async Task<HttpResponseMessage> PushDeployAsync(ArtifactDeploymentInfo deploymentInfo, bool isAsync)
+        private async Task<HttpResponseMessage> PushDeployAsync(ArtifactDeploymentInfo deploymentInfo, string deploymentType, bool isAsync, JObject requestObject = null)
         {
             var content = Request.Content;
             var deployer = deploymentInfo.Deployer;
-            var deploymentType = Request.RequestUri.ParseQueryString()["type"];
             var isRequestJSON = content.Headers?.ContentType?.MediaType?.Equals("application/json", StringComparison.OrdinalIgnoreCase);
             if (isRequestJSON == true)
             {
                 try
                 {
-                    var requestObject = await Request.Content.ReadAsAsync<JObject>();
+                    //Read Httpcontent into a JObject if a JObject does not already exist
+                    if(requestObject == null)
+                    {
+                        requestObject = await Request.Content.ReadAsAsync<JObject>();
+                    }
                     deploymentInfo.ArtifactURL = ArmUtils.IsArmRequest(Request) ? GetArticfactURLFromARMJSON(requestObject) : GetArtifactURLFromJSON(requestObject);
                 }
                 catch (Exception ex)
@@ -367,7 +391,8 @@ namespace Kudu.Services.Deployment
                     return ArmUtils.CreateErrorResponse(Request, HttpStatusCode.BadRequest, ex);
                 }
             }
-            else if (deployer != Constants.OneDeploy || deploymentType == Constants.Zip) // only runs this code if using Zip/War Deploy or OneDeploy Zip 
+            //Copies zipped files to temp path to be unzipped later
+            else if (deploymentType == Constants.Zip) 
             {
                 if (_settings.RunFromLocalZip())
                 {
