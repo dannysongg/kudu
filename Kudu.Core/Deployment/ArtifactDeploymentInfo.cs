@@ -18,9 +18,9 @@ namespace Kudu.Core.Deployment
 
         public override IRepository GetRepository()
         {
-            // Zip "repository" does not conflict with other types, including NoRepository,
+            // Artifact "repository" does not conflict with other types, including NoRepository,
             // so there's no call to EnsureRepository
-            var path = Path.Combine(_environment.ZipTempPath, Constants.ZipExtractPath);
+            var path = Path.Combine(_environment.ArtifactTempPath, Constants.FinalTempPath);
             return new NullRepository(path, _traceFactory);
         }
 
@@ -30,8 +30,8 @@ namespace Kudu.Core.Deployment
 
         public string Message { get; set; }
 
-        // This is used if the deployment is Run-From-Zip
-        public string ZipName { get; set; }
+        // Optional file name. Used by certain features like run-from-zip.
+        public string FileName { get; set; }
 
         // This is used when getting the artifact file from the artifactURL
         public string ArtifactURL { get; set; }

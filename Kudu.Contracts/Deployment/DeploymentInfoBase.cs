@@ -33,11 +33,11 @@ namespace Kudu.Core.Deployment
         // Path of the directory to be deployed to. The path should be relative to the wwwroot directory.
         // Example: "webapps/ROOT"
         // If a path is provided, this should be set to path passed through OneDeploy sans the file name.
-        public string TargetPath { get; set; }
+        public string TargetDirectoryPath { get; set; }
 
         // Hardcode this value when filename is known i.e. app.jar or app.war
         // When the filename is unknown parse the file name from the path query parameter.
-        public string FileName { get; set; }
+        public string TargetFileName { get; set; }
 
         // Optional.
         // Path of the file that is watched for changes by the web server.
@@ -75,6 +75,9 @@ namespace Kudu.Core.Deployment
         // files into a separate folders and run sync triggers from there.
         public string SyncFunctionsTriggersPath { get; set; } = null;
 
+        //If this is set, watched files will be touched. OneDeploy does not touch
+        //watched files because it uses RestartMainSiteAsync() instead of 
+        //RestartMainSiteIfNeeded()
         public bool WatchedFileEnabled { get; set;}
     }
 }

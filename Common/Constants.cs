@@ -8,8 +8,8 @@ namespace Kudu
         public const string WebRoot = "wwwroot";
         public const string MappedSite = "/_app";
         public const string RepositoryPath = "repository";
-        public const string ZipTempPath = "zipdeploy";
-        public const string ZipExtractPath = "extracted";
+        public const string ArtifactTempPath = "deploy";
+        public const string FinalTempPath = "finalTemp";
 
         public const string LockPath = "locks";
         public const string DeploymentLockFile = "deployments.lock";
@@ -149,10 +149,10 @@ namespace Kudu
         public const string Zip = "zip";
 
         //OneDeploy Webapp Frameworks 
-        public const string Framework = "WEBSITE_FRAMEWORK";
-        public const string Tomcat = "tomcat";
-        public const string JavaSE = "javase";
-        public const string JavaEE = "javaee";
+        public const string Framework = "WEBSITE_STACK";
+        public const string Tomcat = "TOMCAT";
+        public const string JavaSE = "JAVASE";
+        public const string JavaEE = "JAVAEE";
 
     }
 }

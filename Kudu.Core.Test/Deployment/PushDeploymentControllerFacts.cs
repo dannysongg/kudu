@@ -79,7 +79,7 @@ namespace Kudu.Core.Test.Deployment
             // Assert
             deploymentManager
                 .Verify(m => m.FetchDeploy(It.Is<ArtifactDeploymentInfo>(di =>
-                    !string.IsNullOrEmpty(di.ZipName) && !string.IsNullOrEmpty(di.SyncFunctionsTriggersPath)),
+                    !string.IsNullOrEmpty(di.FileName) && !string.IsNullOrEmpty(di.SyncFunctionsTriggersPath)),
                     It.IsAny<bool>(),
                     It.IsAny<Uri>(),
                     It.IsAny<string>()

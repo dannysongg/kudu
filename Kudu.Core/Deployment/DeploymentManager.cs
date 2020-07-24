@@ -286,8 +286,13 @@ namespace Kudu.Core.Deployment
             }
         }
 
-        public async Task RestartMainSiteIfNeeded(ITracer tracer, ILogger logger)
+        public async Task RestartMainSiteIfNeeded(ITracer tracer, ILogger logger, DeploymentInfoBase deploymentInfo)
         {
+            if (deploymentInfo.Deployer == Constants.OneDeploy)
+            {
+                await PostDeploymentHelper.RestartMainSiteAsync(_environment.RequestId, new PostDeploymentTraceListener(tracer, logger));
+                return;
+            }
             // If post-deployment restart is disabled, do nothing.
             if (!_settings.RestartAppOnGitDeploy())
             {
@@ -693,21 +698,11 @@ namespace Kudu.Core.Deployment
                     {
                         await builder.Build(context);
                         builder.PostBuild(context);
-                        if(deploymentInfo.Deployer == Constants.OneDeploy)
-                        {
-                            await PostDeploymentHelper.RestartMainSiteAsync(_environment.RequestId, new PostDeploymentTraceListener(tracer, logger));
-                        }
-                        else
-                        {
-                            await RestartMainSiteIfNeeded(tracer, logger);
-                        }
+                        await RestartMainSiteIfNeeded(tracer, logger, deploymentInfo);
             
                         await PostDeploymentHelper.SyncFunctionsTriggers(_environment.RequestId, new PostDeploymentTraceListener(tracer, logger), deploymentInfo?.SyncFunctionsTriggersPath);
 
-                        if (!_settings.RunFromZip() && _settings.TouchWatchedFileAfterDeployment() && deploymentInfo.WatchedFileEnabled)
-                        {
-                            TryTouchWatchedFile(context, deploymentInfo);
-                        }
+                        TouchWatchedFileIfNeeded(_settings, deploymentInfo, context);
 
                         FinishDeployment(id, deployStep);
 
@@ -732,6 +727,14 @@ namespace Kudu.Core.Deployment
             {
                 // Clean the temp folder up
                 CleanBuild(tracer, buildTempPath);
+            }
+        }
+
+        private static void TouchWatchedFileIfNeeded(IDeploymentSettingsManager settings, DeploymentInfoBase deploymentInfo, DeploymentContext context)
+        {
+            if (!settings.RunFromZip() && settings.TouchWatchedFileAfterDeployment() && deploymentInfo.WatchedFileEnabled)
+            {
+                TryTouchWatchedFile(context, deploymentInfo);
             }
         }
 
@@ -791,7 +794,7 @@ namespace Kudu.Core.Deployment
 
             if (String.IsNullOrWhiteSpace(targetPath))
             {
-                targetPath = deploymentInfo?.TargetPath;
+                targetPath = deploymentInfo?.TargetDirectoryPath;
             }
 
             if (!String.IsNullOrWhiteSpace(targetPath))
