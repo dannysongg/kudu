@@ -382,7 +382,7 @@ namespace Kudu.Services.Deployment
                 else
                 {
                     var zipFileName = Path.ChangeExtension(Path.GetRandomFileName(), "zip");
-                    var zipFilePath = Path.Combine(_environment.ArtifactTempPath, zipFileName);
+                    var zipFilePath = Path.Combine(_environment.ZipTempPath, zipFileName);
 
                     using (_tracer.Step("Saving request content to {0}", zipFilePath))
                     {
@@ -580,7 +580,7 @@ namespace Kudu.Services.Deployment
         {
             var content = await DeploymentHelper.GetArtifactContentFromURL(zipDeploymentInfo, tracer);
             var zipFileName = Path.ChangeExtension(Path.GetRandomFileName(), "zip");
-            var zipFilePath = Path.Combine(_environment.ArtifactTempPath, zipFileName);
+            var zipFilePath = Path.Combine(_environment.ZipTempPath, zipFileName);
 
             using (_tracer.Step("Downloading content from {0} to {1}", zipDeploymentInfo.ArtifactURL.Split('?')[0], zipFilePath))
             {
@@ -677,7 +677,7 @@ namespace Kudu.Services.Deployment
             // we may catch something non-obvious.
             try
             {
-                var files = FileSystemHelpers.GetFiles(_environment.ArtifactTempPath, "*")
+                var files = FileSystemHelpers.GetFiles(_environment.ZipTempPath, "*")
                 .Where(p => !PathUtilityFactory.Instance.PathsEquals(p, fileToKeep));
 
                 foreach (var file in files)
@@ -685,7 +685,7 @@ namespace Kudu.Services.Deployment
                     FileSystemHelpers.DeleteFileSafe(file);
                 }
 
-                var dirs = FileSystemHelpers.GetDirectories(_environment.ArtifactTempPath)
+                var dirs = FileSystemHelpers.GetDirectories(_environment.ZipTempPath)
                     .Where(p => !PathUtilityFactory.Instance.PathsEquals(p, dirToKeep));
 
                 foreach (var dir in dirs)

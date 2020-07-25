@@ -65,7 +65,7 @@ namespace Kudu.TestHarness
             set;
         }
 
-        public string ArtifactTempPath
+        public string ZipTempPath
         {
             get;
             set;
